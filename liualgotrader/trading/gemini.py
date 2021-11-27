@@ -92,6 +92,24 @@ class GeminiTrader(Trader):
         }
 
     @classmethod
+    def _get_event_type(cls, order_data: Dict) -> Order.EventType:
+        return (
+            Order.EventType.canceled
+            if order_data["is_cancelled"] == True
+            else Order.EventType.fill
+            if order_data["remaining_amount"] == "0"
+            else Order.EventType.partial_fill
+        )
+
+    @classmethod
+    def _get_order_side(cls, order_data: Dict) -> Order.FillSide:
+        return (
+            Order.FillSide.buy
+            if order_data["side"] == "buy"
+            else Order.FillSide.sell
+        )
+
+    @classmethod
     def _order_from_dict(cls, order_data: Dict) -> Order:
         trades = order_data.get("trades", [])
         trade_fees: float = 0.0 + sum(float(t["fee_amount"]) for t in trades)
@@ -99,15 +117,9 @@ class GeminiTrader(Trader):
             order_id=order_data["order_id"],
             symbol=order_data["symbol"].lower(),
             filled_qty=float(order_data["executed_amount"]),
-            event=Order.EventType.canceled
-            if order_data["is_cancelled"] == True
-            else Order.EventType.fill
-            if order_data["remaining_amount"] == "0"
-            else Order.EventType.partial_fill,
+            event=cls._get_event_type(order_data),
             price=float(order_data["price"]),
-            side=Order.FillSide.buy
-            if order_data["side"] == "buy"
-            else Order.FillSide.sell,
+            side=cls._get_order_side(order_data),
             submitted_at=pd.Timestamp(
                 ts_input=order_data["timestampms"], unit="ms", tz="UTC"
             ),
