@@ -171,6 +171,7 @@ async def periodic_runner(data_loader: DataLoader, trader: Trader) -> None:
                             data_loader=data_loader,
                             strategy=s,
                             symbols=symbols,
+                            trader=trader,
                         )
                     )
                 )
