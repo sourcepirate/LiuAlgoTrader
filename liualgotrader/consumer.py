@@ -16,6 +16,7 @@ from mnqueues import MNQueue
 from pandas import DataFrame as df
 from pytz import timezone
 
+from liualgotrader.analytics.analysis import load_trades_by_portfolio
 from liualgotrader.common import config, market_data, trading_data
 from liualgotrader.common.data_loader import DataLoader  # type: ignore
 from liualgotrader.common.database import create_db_connection
@@ -847,6 +848,30 @@ async def create_strategies_from_file(
     return strategy_list
 
 
+async def load_symbol_position(portfolio_id: str) -> Dict[str, float]:
+    trades = load_trades_by_portfolio(portfolio_id)
+
+    if not len(trades):
+        return {}
+    new_df = pd.DataFrame()
+    new_df["symbol"] = trades.symbol.unique()
+    new_df["qty"] = new_df.symbol.apply(
+        lambda x: (
+            trades[
+                (trades.symbol == x) & (trades.operation == "buy")
+            ].qty.sum()
+        )
+        - trades[(trades.symbol == x) & (trades.operation == "sell")].qty.sum()
+    )
+    new_df = new_df.loc[new_df.qty != 0]
+
+    rc_dict: Dict[str, float] = {}
+    for _, row in new_df.iterrows():
+        rc_dict[row.symbol] = float(row.qty)
+
+    return rc_dict
+
+
 async def create_strategies_from_db(
     batch_id: str,
     trader: Trader,
@@ -869,6 +894,14 @@ async def create_strategies_from_db(
         )
         if s:
             strategy_list.append(s)
+            positions = await load_symbol_position(
+                trade_plan_entry.portfolio_id
+            )
+            tlog(f"Loaded {len(positions)} positions for strategy_name")
+            for symbol, qty in positions.items():
+                trading_data.positions[symbol] = (
+                    trading_data.positions.get(symbol, 0.0) + qty
+                )
 
     return strategy_list
 

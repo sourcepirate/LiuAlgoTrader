@@ -141,15 +141,12 @@ class AlpacaData(DataAPI):
                     symbol=symbol, start=_start, end=_end, timeframe=t
                 )
             )
-        except APIError as e:
-            tlog(f"received APIError: {e}")
-            if e.status_code == 500:
+        except requests.exceptions.HTTPError as e:
+            tlog(f"received HTTPError: {e}")
+            if e.response.status_code in (500, 502, 504):
+                tlog("Internal server error, retrying")
                 time.sleep(10)
                 return self.get_symbol_data(symbol, start, end, scale)
-
-            raise ValueError(
-                f"[EXCEPTION] {e} for {symbol} has no data for {_start} to {_end} w {scale.name}"
-            )
 
         except Exception as e:
             raise ValueError(
