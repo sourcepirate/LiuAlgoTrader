@@ -720,14 +720,11 @@ async def handle_aggregate(
     ):
         return True
 
-    # do we have a position?
-    symbol_position = trading_data.positions.get(symbol, 0)
-
     await trace(carrier)(do_strategies)(
         trader=trader,
         data_loader=data_loader,
         symbol=symbol,
-        position=symbol_position,
+        position=trading_data.positions.get(symbol, 0),
         now=ts,
         data=data,
     )
