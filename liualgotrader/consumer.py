@@ -550,6 +550,43 @@ async def order_inflight(
         )
 
 
+async def submit_order(
+    trader: Trader, symbol: str, what: Dict, external_account_id: str = None
+) -> Order:
+    return (
+        await trader.submit_order(
+            symbol=symbol,
+            qty=what["qty"],
+            side=what["side"],
+            order_type="limit",
+            time_in_force="day",
+            limit_price=what["limit_price"],
+            on_behalf_of=external_account_id,
+        )
+        if what["type"] == "limit"
+        else await trader.submit_order(
+            symbol=symbol,
+            qty=what["qty"],
+            side=what["side"],
+            order_type=what["type"],
+            time_in_force="day",
+            on_behalf_of=external_account_id,
+        )
+    )
+
+
+async def update_trading_data(
+    symbol: str, o: Order, strategy: Strategy, buy: bool
+) -> None:
+    trading_data.open_orders[symbol] = o
+    trading_data.open_order_strategy[symbol] = strategy
+    trading_data.last_used_strategy[symbol] = strategy
+    if buy:
+        trading_data.buy_time[symbol] = datetime.now(
+            tz=timezone("America/New_York")
+        ).replace(second=0, microsecond=0)
+
+
 async def execute_strategy_result(
     strategy: Strategy,
     trader: Trader,
@@ -557,66 +594,30 @@ async def execute_strategy_result(
     symbol: str,
     what: Dict,
     external_account_id: str = None,
-):
+) -> bool:
     tlog(f"execute_strategy_result for {symbol} do {what}")
     symbol = symbol.lower()
 
-    ny_now = datetime.now(nyc)
-    if not trader.is_market_open(ny_now):
-        tlog(
-            f"market closed, can't execute order for {symbol} @ {strategy.name}"
-        )
-        return
+    o = await submit_order(trader, symbol, what, external_account_id)
+    if not o:
+        return False
 
-    try:
-        if what["type"] == "limit":
-            o = await trader.submit_order(
-                symbol=symbol,
-                qty=what["qty"],
-                side=what["side"],
-                order_type="limit",
-                time_in_force="day",
-                limit_price=what["limit_price"],
-                on_behalf_of=external_account_id,
-            )
-        else:
-            o = await trader.submit_order(
-                symbol=symbol,
-                qty=what["qty"],
-                side=what["side"],
-                order_type=what["type"],
-                time_in_force="day",
-                on_behalf_of=external_account_id,
-            )
+    await update_trading_data(symbol, o, strategy, (what["side"] == "buy"))
+    await save(
+        symbol=symbol,
+        new_qty=0,
+        last_op=str(what["side"]),
+        price=0.0,
+        indicators={},
+        now=str(datetime.utcnow()),
+    )
 
-        if not o:
-            return
-
-        trading_data.open_orders[symbol.lower()] = o
-        trading_data.open_order_strategy[symbol.lower()] = strategy
-
-        await save(
-            symbol=symbol,
-            new_qty=0,
-            last_op=str(what["side"]),
-            price=0.0,
-            indicators={},
-            now=str(datetime.utcnow()),
-        )
-
+    if config.debug_enabled:
         tlog(
             f"executed strategy {strategy.name} on {symbol} w data {data_loader[symbol][-10:]}"
         )
-        trading_data.last_used_strategy[symbol] = strategy
-        if what["side"] == "buy":
-            trading_data.buy_time[symbol] = datetime.now(
-                tz=timezone("America/New_York")
-            ).replace(second=0, microsecond=0)
 
-    except Exception as e:
-        if config.debug_enabled:
-            tlog_exception("execute_strategy_result")
-        tlog(f"[EXCEPTION] Exception with {e}")
+    return True
 
 
 async def do_strategy(
@@ -631,6 +632,10 @@ async def do_strategy(
     portfolio_value: Optional[float],
     carrier=None,
 ) -> bool:
+    if not trader.is_market_open(datetime.now(nyc)):
+        tlog(f"market closed, can't execute {symbol} @ {strategy.name}")
+        return False
+
     do, what = await strategy.run(
         symbol=symbol,
         shortable=shortable,
@@ -640,7 +645,7 @@ async def do_strategy(
         portfolio_value=portfolio_value,
     )
 
-    if do:
+    return (
         await execute_strategy_result(
             strategy=strategy,
             trader=trader,
@@ -648,9 +653,9 @@ async def do_strategy(
             symbol=symbol,
             what=what,
         )
-    elif what.get("reject", False):
-        return False
-    return True
+        if do
+        else not what.get("reject", False)
+    )
 
 
 async def _filter_strategies(symbol: str) -> List:
