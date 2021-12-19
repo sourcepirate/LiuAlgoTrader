@@ -80,7 +80,6 @@ class AlpacaData(DataAPI):
                 "APCA-API-SECRET-KEY": config.alpaca_api_secret,
             },
         )
-
         if response.status_code == 200:
             df = pd.DataFrame(response.json()["bars"])
             df.rename(
@@ -143,8 +142,8 @@ class AlpacaData(DataAPI):
             )
         except requests.exceptions.HTTPError as e:
             tlog(f"received HTTPError: {e}")
-            if e.response.status_code in (500, 502, 504):
-                tlog("Internal server error, retrying")
+            if e.response.status_code in (500, 502, 504, 429):
+                tlog("retrying")
                 time.sleep(10)
                 return self.get_symbol_data(symbol, start, end, scale)
 
