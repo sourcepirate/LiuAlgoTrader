@@ -117,6 +117,8 @@ class AlpacaData(DataAPI):
         if not isinstance(symbols, list):
             raise AssertionError(f"{symbols} must be a list")
 
+        if scale == TimeScale.minute:
+            end += timedelta(days=1)
         _start, _end = self._localize_start_end(start, end)
         dfs: Dict = {}
         t: TimeFrame = (
