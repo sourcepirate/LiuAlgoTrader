@@ -105,6 +105,64 @@ class AlpacaData(DataAPI):
             f"ALPACA CRYPTO {response.status_code} {response.text}"
         )
 
+    def get_symbols_data(
+        self,
+        symbols: List[str],
+        start: date,
+        end: date = date.today(),
+        scale: TimeScale = TimeScale.minute,
+    ) -> Dict[str, pd.DataFrame]:
+        if not self.alpaca_rest_client:
+            raise AssertionError("Must call w/ authenticated Alpaca client")
+        if not isinstance(symbols, list):
+            raise AssertionError(f"{symbols} must be a list")
+
+        _start, _end = self._localize_start_end(start, end)
+        dfs: Dict = {}
+        t: TimeFrame = (
+            TimeFrame.Minute
+            if scale == TimeScale.minute
+            else TimeFrame.Day
+            if scale == TimeScale.day
+            else None
+        )
+        try:
+            data = self.alpaca_rest_client.get_bars(
+                symbol=symbols,
+                timeframe=t,
+                start=_start,
+                end=_end,
+                limit=10000,
+                adjustment="all",
+            ).df
+        except requests.exceptions.HTTPError as e:
+            tlog(f"received HTTPError: {e}")
+            if e.response.status_code in (500, 502, 504, 429):
+                tlog("retrying")
+                time.sleep(10)
+                return self.get_symbols_data(symbols, start, end, scale)
+
+        data = data.tz_convert("America/New_York")
+        data["average"] = data.vwap
+        data["count"] = data.trade_count
+        data["vwap"] = np.NaN
+        grouped = data.groupby(data.symbol)
+        for symbol in data.symbol.unique():
+            dfs[symbol] = grouped.get_group(symbol)[
+                [
+                    "open",
+                    "high",
+                    "low",
+                    "close",
+                    "volume",
+                    "count",
+                    "average",
+                    "vwap",
+                ]
+            ]
+
+        return dfs
+
     def get_symbol_data(
         self,
         symbol: str,

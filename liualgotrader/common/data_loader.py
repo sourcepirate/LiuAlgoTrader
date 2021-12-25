@@ -1,6 +1,6 @@
 # type: ignore
 from datetime import date, datetime, timedelta
-from typing import Dict, Tuple
+from typing import Dict, List, Tuple
 
 import alpaca_trade_api as tradeapi
 import nest_asyncio
@@ -441,10 +441,21 @@ class DataLoader:
     ):
         self.data_api = data_loader_factory(connector)
         self.data: Dict[str, SymbolData] = {}
+        self.scale = scale
         if not self.data_api:
             raise AssertionError("Failed to create data loader")
 
-        self.scale = scale
+    def pre_fetch(self, symbols: List[str], start: date, end: date):
+        if not self.symbols:
+            return
+
+        data = self.data_api.get_symbols_data(
+            symbols=symbols, start=start, end=end, scale=self.scale
+        )
+
+        for symbol, df in data.items():
+            self.data[symbol] = SymbolData(self.data_api, symbol, self.scale)
+            self.data[symbol].symbol_data = df
 
     def exist(self, symbol: str) -> bool:
         return symbol in self.data

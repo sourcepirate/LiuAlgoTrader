@@ -20,8 +20,18 @@ class DataAPI(metaclass=ABCMeta):
         end: date = date.today(),
         scale: TimeScale = TimeScale.minute,
     ) -> pd.DataFrame:
-        return pd.DataFrame()
+        ...
 
     @abstractmethod
     def get_symbols(self) -> List[Dict]:
-        return []
+        ...
+
+    @abstractmethod
+    def get_symbols_data(
+        self,
+        symbols: List[str],
+        start: date,
+        end: date = date.today(),
+        scale: TimeScale = TimeScale.minute,
+    ) -> Dict[str, pd.DataFrame]:
+        ...
