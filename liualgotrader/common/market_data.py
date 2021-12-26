@@ -154,4 +154,4 @@ async def get_trading_day(now: date, offset: int) -> date:
         n=-offset, holidays=await get_trading_holidays()
     )
 
-    return now + cbd_offset
+    return (now + cbd_offset).date()

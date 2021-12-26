@@ -14,7 +14,6 @@ nyc = timezone("America/New_York")
 
 @pytest.mark.devtest
 def test_multi_date_performance() -> bool:
-
     dl = DataLoader(scale=TimeScale.day, connector=DataConnectorType.alpaca)
 
     t = time.time()

@@ -1,4 +1,5 @@
 import asyncio
+import time
 from datetime import date, datetime
 
 import pytest
@@ -124,3 +125,21 @@ async def test_get_trading_day():
         raise AssertionError("expected offset 1000")
 
     return True
+
+
+@pytest.mark.asyncio
+@pytest.mark.devtest
+async def test_load_sp500_data():
+    today = datetime.today()
+    sp500_symbols = await sp500_historical_constituents(today)
+    dl = DataLoader(scale=TimeScale.day)
+    d1 = await get_trading_day(now=today.date(), offset=200)
+
+    print(f"start:{d1}, end:{today.date()}")
+    t0 = time.time()
+    dl.pre_fetch(symbols=sp500_symbols, start=d1, end=today.date())
+    t = time.time() - t0
+    print(f"loaded SP500 in {t}")
+
+    print(sp500_symbols[0], dl[sp500_symbols[0]][d1 : today.date()])
+    print(sp500_symbols[-1], dl[sp500_symbols[-1]][d1 : today.date()])
