@@ -206,7 +206,7 @@ class SymbolData:
     #        return self.symbol_data.__setattr__(name, value)
 
     def __getattr__(self, attr) -> _Column:
-        if attr[0:3] == "loc" or attr[0:4] == "iloc" or attr[0:5] == "apply":
+        if attr[:3] == "loc" or attr[:4] == "iloc" or attr[:5] == "apply":
             return self.symbol_data.__getattr__(attr)
         elif attr not in self.columns:
             self.columns[attr] = self._Column(
