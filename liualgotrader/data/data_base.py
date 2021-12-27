@@ -8,9 +8,9 @@ from liualgotrader.common.types import TimeScale
 
 
 class DataAPI(metaclass=ABCMeta):
-    def __init__(self, ws_uri: str, ws_messges_handler: Awaitable):
+    def __init__(self, ws_uri: str, ws_messages_handler: Awaitable):
         self.ws_uri = ws_uri
-        self.ws_msgs_handler = ws_messges_handler
+        self.ws_msgs_handler = ws_messages_handler
 
     @abstractmethod
     def get_symbol_data(
@@ -34,4 +34,8 @@ class DataAPI(metaclass=ABCMeta):
         end: date = date.today(),
         scale: TimeScale = TimeScale.minute,
     ) -> Dict[str, pd.DataFrame]:
+        ...
+
+    @abstractmethod
+    def trading_days_slice(self, slice) -> slice:
         ...

@@ -59,6 +59,26 @@ class AlpacaData(DataAPI):
     def _is_crypto_symbol(self, symbol: str) -> bool:
         return symbol.lower() in ["btcusd", "ethusd"]
 
+    def trading_days_slice(self, s: slice) -> slice:
+        if not self.alpaca_rest_client:
+            raise AssertionError("Must call w/ authenticated Alpaca client")
+
+        trading_days = self.alpaca_rest_client.get_calendar(
+            str(s.start.date()), str(s.stop.date())
+        )
+        return slice(
+            nytz.localize(
+                datetime.combine(
+                    trading_days[0].date.date(), trading_days[0].open
+                )
+            ),
+            nytz.localize(
+                datetime.combine(
+                    trading_days[-1].date.date(), trading_days[-1].close
+                )
+            ),
+        )
+
     def crypto_get_symbol_data(
         self,
         symbol: str,
@@ -134,7 +154,7 @@ class AlpacaData(DataAPI):
                 timeframe=t,
                 start=_start,
                 end=_end,
-                limit=10000,
+                limit=1000000000,
                 adjustment="all",
             ).df
         except requests.exceptions.HTTPError as e:
@@ -192,7 +212,7 @@ class AlpacaData(DataAPI):
                     timeframe=t,
                     start=_start,
                     end=_end,
-                    limit=10000,
+                    limit=1000000000,
                     adjustment="all",
                 ).df
                 if not self._is_crypto_symbol(symbol)

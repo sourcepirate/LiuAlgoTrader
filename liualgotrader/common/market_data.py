@@ -130,20 +130,6 @@ async def sp500_historical_constituents(date):
     return list(set(symbols) - set(added)) + removed
 
 
-async def index_history(index: str, days: int) -> df:
-    if index == "SP500":
-        start = (
-            date.today() - timedelta(days=int(days * 7 / 5) + 20)
-        ).strftime("%s")
-        end = date.today().strftime("%s")
-
-        url = f"https://query1.finance.yahoo.com/v7/finance/download/%5EGSPC?period1={start}&period2={end}&interval=1d&events=history&includeAdjustedClose=true"
-        s = requests.get(url).content
-        return pd.read_csv(io.StringIO(s.decode("utf-8")))
-
-    raise NotImplementedError(f"index {index} not supported yet")
-
-
 async def get_trading_holidays() -> List[str]:
     nyse = pandas_market_calendars.get_calendar("NYSE")
     return nyse.holidays().holidays

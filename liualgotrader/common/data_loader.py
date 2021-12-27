@@ -1,6 +1,6 @@
 # type: ignore
-from datetime import date, datetime, timedelta
-from typing import Dict, List, Tuple
+from datetime import date, datetime, time, timedelta
+from typing import Dict, List, Optional, Tuple
 
 import alpaca_trade_api as tradeapi
 import nest_asyncio
@@ -19,6 +19,51 @@ nest_asyncio.apply()
 nyc = timezone("America/New_York")
 
 
+def _convert_offset_to_datetime(offset: int, scale: TimeScale) -> datetime:
+    if scale == TimeScale.minute:
+        _rc = datetime.now(tz=nyc).replace(
+            second=0, microsecond=0
+        ) + timedelta(minutes=1 + offset)
+    elif scale == TimeScale.day:
+        _rc = datetime.now(tz=nyc).replace(
+            second=0, microsecond=0
+        ) + timedelta(days=1 + offset)
+
+    return _rc
+
+
+def _handle_slice_conversion(
+    data_api: DataAPI, key: slice, scale: TimeScale
+) -> slice:
+    # handle slide start
+    print("in", key)
+    if type(key.start) == str:
+        key = slice(nyc.localize(date_parser(key.start)), key.stop)
+    elif type(key.start) == int:
+        key = slice(_convert_offset_to_datetime(key.start, scale), key.stop)
+    elif type(key.start) == date:
+        key = slice(
+            nyc.localize(datetime.combine(key.start, datetime.min.time())),
+            key.stop,
+        )
+
+    # handle slice end
+    if type(key.stop) == str:
+        key = slice(
+            key.start,
+            nyc.localize(date_parser(key.stop)),
+        )
+    elif type(key.stop) == int:
+        key = slice(key.start, _convert_offset_to_datetime(key.stop, scale))
+    elif type(key.stop) == date:
+        key = slice(
+            key.start,
+            nyc.localize(datetime.combine(key.stop, datetime.min.time())),
+        )
+    print("out", key)
+    return data_api.trading_days_slice(key)
+
+
 class SymbolData:
     class _Column:
         def __init__(
@@ -26,66 +71,15 @@ class SymbolData:
             data_api: DataAPI,
             name: str,
             data: object,
+            scale: TimeScale,
         ):
             self.name = name
             self.data_api = data_api
             self.data = data
+            self.scale = scale
 
         def __repr__(self):
             return str(self.data.symbol_data[self.name])
-
-        def _convert_offset_to_datetime(self, offset: int) -> datetime:
-            if self.data.scale == TimeScale.minute:
-                if len(self.data.symbol_data):
-                    _rc = self.data.symbol_data.index[-1] + timedelta(
-                        minutes=1 + offset
-                    )
-                else:
-                    _rc = datetime.now(tz=nyc).replace(
-                        second=0, microsecond=0
-                    ) + timedelta(minutes=1 + offset)
-            elif self.data.scale == TimeScale.day:
-                _rc = datetime.now(tz=nyc).replace(
-                    second=0, microsecond=0
-                ) + timedelta(days=1 + offset)
-
-            return _rc
-
-        def _handle_slice_conversion(self, key: slice) -> slice:
-            # handle slide start
-            if type(key.start) == str:
-                key = slice(nyc.localize(date_parser(key.start)), key.stop)
-            elif type(key.start) == int:
-                key = slice(
-                    self._convert_offset_to_datetime(key.start), key.stop
-                )
-            elif type(key.start) == date:
-                key = slice(
-                    nyc.localize(
-                        datetime.combine(key.start, datetime.min.time())
-                    ),
-                    key.stop,
-                )
-
-            # handle slice end
-            if type(key.stop) == str:
-                key = slice(
-                    key.start,
-                    nyc.localize(date_parser(key.stop)) + timedelta(days=1),
-                )
-            elif type(key.stop) == int:
-                key = slice(
-                    key.start, self._convert_offset_to_datetime(key.stop)
-                )
-            elif type(key.stop) == date:
-                key = slice(
-                    key.start,
-                    nyc.localize(
-                        datetime.combine(key.stop, datetime.min.time())
-                    )
-                    + timedelta(days=1),
-                )
-            return key
 
         def _get_index(self, index: datetime, method: str = "ffill") -> int:
             try:
@@ -105,7 +99,7 @@ class SymbolData:
                 key = slice(key.start, -1)
 
             # ensure key represents datetime
-            key = self._handle_slice_conversion(key)
+            key = _handle_slice_conversion(self.data_api, key, self.scale)
 
             # load data, if missing
             if (
@@ -132,7 +126,7 @@ class SymbolData:
             if type(key) == str:
                 key = nyc.localize(date_parser(key))
             elif type(key) == int:
-                key = self._convert_offset_to_datetime(key)
+                key = _convert_offset_to_datetime(key, self.scale)
             elif type(key) == date:
                 key = nyc.localize(datetime.combine(key, datetime.min.time()))
 
@@ -179,22 +173,33 @@ class SymbolData:
         def __call__(self):
             return self.data.symbol_data[self.name]
 
-    def __init__(self, data_api: tradeapi, symbol: str, scale: TimeScale):
+    def __init__(
+        self,
+        data_api: tradeapi,
+        symbol: str,
+        scale: TimeScale,
+        prefetched_data: Optional[pd.DataFrame] = None,
+    ):
         self.data_api = data_api
         self.symbol = symbol
         self.scale = scale
         self.columns: Dict[str, self._Column] = {}  # type: ignore
-        self.symbol_data = pd.DataFrame(
-            columns=[
-                "open",
-                "high",
-                "low",
-                "close",
-                "volume",
-                "vwap",
-                "average",
-                "count",
-            ]
+
+        self.symbol_data = (
+            prefetched_data
+            if prefetched_data is not None
+            else pd.DataFrame(
+                columns=[
+                    "open",
+                    "high",
+                    "low",
+                    "close",
+                    "volume",
+                    "vwap",
+                    "average",
+                    "count",
+                ]
+            )
         )
 
     #    def __setattr__(self, name, value):
@@ -204,53 +209,10 @@ class SymbolData:
         if attr[0:3] == "loc" or attr[0:4] == "iloc" or attr[0:5] == "apply":
             return self.symbol_data.__getattr__(attr)
         elif attr not in self.columns:
-            self.columns[attr] = self._Column(self.data_api, attr, self)
+            self.columns[attr] = self._Column(
+                self.data_api, attr, self, self.scale
+            )
         return self.columns[attr]
-
-    def _convert_offset_to_datetime(self, offset: int) -> datetime:
-        if self.scale == TimeScale.minute:
-            if len(self.symbol_data):
-                _rc = self.symbol_data.index[-1] + timedelta(
-                    minutes=1 + offset
-                )
-            else:
-                _rc = datetime.now(tz=nyc).replace(
-                    second=0, microsecond=0
-                ) + timedelta(minutes=1 + offset)
-        elif self.scale == TimeScale.day:
-            _rc = datetime.now(tz=nyc).replace(
-                second=0, microsecond=0
-            ) + timedelta(days=1 + offset)
-
-        return _rc
-
-    def _handle_slice_conversion(self, key: slice) -> slice:
-        # handle slide start
-        if type(key.start) == str:
-            key = slice(nyc.localize(date_parser(key.start)), key.stop)
-        elif type(key.start) == int:
-            key = slice(self._convert_offset_to_datetime(key.start), key.stop)
-        elif type(key.start) == date:
-            key = slice(
-                nyc.localize(datetime.combine(key.start, datetime.min.time())),
-                key.stop,
-            )
-
-        # handle slice end
-        if type(key.stop) == str:
-            key = slice(
-                key.start,
-                nyc.localize(date_parser(key.stop)) + timedelta(days=1),
-            )
-        elif type(key.stop) == int:
-            key = slice(key.start, self._convert_offset_to_datetime(key.stop))
-        elif type(key.stop) == date:
-            key = slice(
-                key.start,
-                nyc.localize(datetime.combine(key.stop, datetime.min.time()))
-                + timedelta(days=1),
-            )
-        return key
 
     def _get_index(self, index: datetime, method: str = "ffill") -> int:
         try:
@@ -270,13 +232,33 @@ class SymbolData:
             key = slice(key.start, -1)
 
         # handle slice conversations
-        key = self._handle_slice_conversion(key)
+        key = _handle_slice_conversion(self.data_api, key, self.scale)
 
         # load data
-        if not len(self.symbol_data) or key.stop > self.symbol_data.index[-1]:
+        if (
+            not len(self.symbol_data)
+            or (
+                key.stop > self.symbol_data.index[-1]
+                and self.scale == TimeScale.minute
+            )
+            or (
+                key.stop.date() > self.symbol_data.index[-1].date()
+                and self.scale == TimeScale.day
+            )
+        ):
             self.fetch_data_timestamp(key.stop)
 
-        if not len(self.symbol_data) or key.start < self.symbol_data.index[0]:
+        if (
+            not len(self.symbol_data)
+            or (
+                key.start < self.symbol_data.index[0]
+                and self.scale == TimeScale.minute
+            )
+            or (
+                key.start.date() < self.symbol_data.index[0].date()
+                and self.scale == TimeScale.day
+            )
+        ):
             self.fetch_data_range(key.start, self.symbol_data.index[0])
 
         # get index for start & end
@@ -295,7 +277,7 @@ class SymbolData:
         if type(key) == str:
             key = nyc.localize(date_parser(key))
         elif type(key) == int:
-            key = self._convert_offset_to_datetime(key)
+            key = _convert_offset_to_datetime(key, self.scale)
         elif type(key) == date:
             key = nyc.localize(datetime.combine(key, datetime.min.time()))
 
@@ -452,10 +434,11 @@ class DataLoader:
         data = self.data_api.get_symbols_data(
             symbols=symbols, start=start, end=end, scale=self.scale
         )
-
+        print(f"Loaded {len(data.keys())}")
         for symbol, df in data.items():
-            self.data[symbol] = SymbolData(self.data_api, symbol, self.scale)
-            self.data[symbol].symbol_data = df
+            self.data[symbol] = SymbolData(
+                self.data_api, symbol, self.scale, df
+            )
 
     def exist(self, symbol: str) -> bool:
         return symbol in self.data

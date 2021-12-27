@@ -141,5 +141,41 @@ async def test_load_sp500_data():
     t = time.time() - t0
     print(f"loaded SP500 in {t}")
 
+    t0 = time.time()
+    dl[sp500_symbols[0]][d1 : today.date()]
+    t = time.time() - t0
+    print(f"loaded first symbol in {t}")
     print(sp500_symbols[0], dl[sp500_symbols[0]][d1 : today.date()])
+
+    t0 = time.time()
+    dl[sp500_symbols[-1]][d1 : today.date()]
+    t = time.time() - t0
+    print(f"loaded last symbol in {t}")
+    print(sp500_symbols[-1], dl[sp500_symbols[-1]][d1 : today.date()])
+
+
+@pytest.mark.asyncio
+@pytest.mark.devtest
+async def test_load_sp500_data_minute():
+    today = datetime.today()
+    sp500_symbols = await sp500_historical_constituents(today)
+    dl = DataLoader(scale=TimeScale.minute)
+    d1 = await get_trading_day(now=today.date(), offset=10)
+
+    print(f"start:{d1}, end:{today.date()}")
+    t0 = time.time()
+    dl.pre_fetch(symbols=sp500_symbols, start=d1, end=today.date())
+    t = time.time() - t0
+    print(f"loaded SP500 in {t}")
+
+    t0 = time.time()
+    dl[sp500_symbols[0]][d1 : today.date()]
+    t = time.time() - t0
+    print(f"loaded first symbol in {t}")
+    print(sp500_symbols[0], dl[sp500_symbols[0]][d1 : today.date()])
+
+    t0 = time.time()
+    dl[sp500_symbols[-1]][d1 : today.date()]
+    t = time.time() - t0
+    print(f"loaded last symbol in {t}")
     print(sp500_symbols[-1], dl[sp500_symbols[-1]][d1 : today.date()])

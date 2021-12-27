@@ -158,6 +158,20 @@ class GeminiData(DataAPI):
         )
         return returned_df
 
+    def get_symbols_data(
+        self,
+        symbols: List[str],
+        start: date,
+        end: date = date.today(),
+        scale: TimeScale = TimeScale.minute,
+    ) -> Dict[str, pd.DataFrame]:
+        raise NotImplementedError(
+            "get_symbols_data() not implemented yet for Gemini data provider"
+        )
+
+    def trading_days_slice(self, s: slice) -> slice:
+        return s
+
     def get_symbol_data(
         self,
         symbol: str,
